@@ -1,0 +1,1 @@
+from .meals_generate import router as user_interactions_router
