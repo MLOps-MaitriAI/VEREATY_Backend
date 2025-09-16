@@ -21,6 +21,7 @@ from db.session import Base, SessionLocal, engine,get_db
 from api.v1.endpoints.user import user_router
 from api.v1.endpoints.onboarding import onboardings_router
 from api.v1.endpoints.dish_recommendation import user_interactions_router
+from api.v1.endpoints.dish_recommendation import meal_favourites_router
 from api.v1.models import all_models
 Base.metadata.create_all(bind=engine)
 
@@ -62,6 +63,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(onboardings_router, prefix="/api", tags=["Onboarding"])
 app.include_router(user_router, prefix="/api", tags=["User Auth"])
 app.include_router(user_interactions_router, prefix="/api", tags=["Dish genrate"])
+app.include_router(meal_favourites_router, prefix="/api", tags=["Favourite Dish"])
 
 
 #------------------------------------- Swagger Security Docs ---------------------------------------------------

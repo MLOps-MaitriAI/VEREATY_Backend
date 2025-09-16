@@ -7,6 +7,7 @@ from api.v1.models.dish_recommendation.meal_instructions import MealInstructions
 from api.v1.models.dish_recommendation.meal_nutrition_info import MealNutritionInfo
 from api.v1.models.dish_recommendation.meal_requests import MealRequest
 from api.v1.models.user.user_auth import User
+from auth.auth_bearer import JWTBearer
 from db.session import get_db
 from api.v1.models.onboarding.onboarding_sessions import OnboardingSession
 from api.v1.models.onboarding.onboarding_requests import OnboardingRequests
@@ -20,7 +21,7 @@ router = APIRouter()
 now = datetime.now(timezone.utc)
 base_url = os.getenv("Base_url")
 
-@router.post("/generate-meals")
+@router.post("/generate-meals", dependencies=[Depends(JWTBearer())])
 async def generate_meals(
     request: Request,
     response: Response,
@@ -235,7 +236,7 @@ async def generate_meals(
     except Exception as e:
         raise HTTPException(status_code=500,detail=f"Meal generation error: {str(e)}")
 
-@router.get("/generated-meals")
+@router.get("/generated-meals", dependencies=[Depends(JWTBearer())])
 async def get_saved_meals(
     request: Request,
     db: Session = Depends(get_db),

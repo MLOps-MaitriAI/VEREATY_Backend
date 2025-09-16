@@ -10,6 +10,7 @@ class MealHistory(Base):
     user_id = Column(Integer, ForeignKey("users.user_id"))
     meal_id = Column(Integer, ForeignKey("generated_meals.meal_id"))
     is_cooked = Column(Boolean, default=False)
+    cooked_image_url = Column(String(455), nullable=True)
     created_by = Column(Integer, nullable=True)
     updated_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
