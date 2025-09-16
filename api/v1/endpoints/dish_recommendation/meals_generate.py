@@ -35,7 +35,7 @@ async def generate_meals(
         try:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         except ValueError:
-            raise HTTPException(status_code=400,etail="Invalid start_date format. Use YYYY-MM-DD") 
+            raise HTTPException(status_code=400,etail="Invalid start_date format. Use YYYY-MM-DD") ##
 
         if num_days < 1:
             raise HTTPException(status_code=400,detail="num_days must be at least 1")
