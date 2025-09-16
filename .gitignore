@@ -1,0 +1,44 @@
+# Ignore environment variable files
+.env
+.env.local
+.env.*.local
+
+# Ignore virtual environment directories
+venv/
+.venv/
+
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore log files and temporary files
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# Ignore Jupyter Notebook checkpoints (if using Jupyter)
+.ipynb_checkpoints/
+
+# Ignore system files (optional)
+.idea/          # JetBrains IDE (PyCharm)
+.vscode/        # VS Code settings
+.env
+
+# Ignore error explanation file
+#error_code_explain.txt
+
+# Ignore test_case folder
+test_case/
+test/
+
+# ----------------------------
+# ✅ Ensure Jenkinsfile is tracked
+!Jenkinsfile
+
+# Ignore alembic migrations
+alembic/
+alembic.ini
