@@ -1,5 +1,5 @@
 # =============================================================================
-# FIXED PRODUCTION-READY MEAL PLANNING ONBOARDING SYSTEM
+# FIXED PRODUCTION-READY MEAL PLANNING ONBOARDING SYSTEM - DYNAMIC LLM ONLY
 # =============================================================================
 
 from fastapi import HTTPException, Request, Response
@@ -27,156 +27,717 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# ENHANCED CONVERSATION ENGINE WITH FIXED COMPLETION LOGIC
+# ENHANCED CONVERSATION ENGINE - PURE DYNAMIC LLM APPROACH
 # =============================================================================
 
 class DynamicConversationEngine:
-    """Production-ready conversation engine with fixed 10-question requirement"""
+    """Fully dynamic conversation engine - LLM generates all preference keys"""
     
     def __init__(self, model_name: str = 'gemini-2.0-flash-exp'):
         try:
             self.model = genai.GenerativeModel(model_name)
             self.generation_config = {
-                'temperature': 0.6,
+                'temperature': 0.75,  
                 'top_p': 0.9,
-                'top_k': 32,
-                'max_output_tokens': 512,
+                'top_k': 40,
+                'max_output_tokens': 4080,  
             }
             logger.info(f"Initialized conversation engine with model: {model_name}")
         except Exception as e:
             logger.error(f"Failed to initialize conversation engine: {str(e)}")
             raise HTTPException(status_code=500, detail="AI service initialization failed")
+        
     
     def generate_next_question(
-        self, 
-        conversation_history: List[Dict], 
+        self,
+        conversation_history: List[Dict],
         user_input: str = "",
         question_count: int = 11
     ) -> Dict[str, Any]:
-        """Generate next question with FIXED completion logic for exactly 10 questions"""
+        """Generate fully dynamic questions with dynamic preference keys"""
         try:
-            # FIXED: Only complete after exactly 10 answered questions
             answered_questions = [msg for msg in conversation_history if msg.get("answer")]
             total_answered = len(answered_questions)
-            
-            logger.info(f"Question generation: {total_answered} answered questions out of 10 required")
-            
-            # Only complete when we have exactly 10 or more answered questions
-            if total_answered >= 11:
-                logger.info("Completing onboarding - 10 questions answered")
+
+            logger.info(f"Generating dynamic question #{total_answered + 1}/10")
+
+            if total_answered >= 10:
+                logger.info("All 10 questions answered. Generating completion summary...")
                 return self._generate_completion_response(conversation_history)
-            
-            # Build context for AI
-            context = self._build_conversation_context(conversation_history)
-            covered_categories = self._extract_covered_categories(conversation_history)
-            
-            # Create enhanced prompt
-            prompt = DYNAMIC_SYSTEM_PROMPT.format(
-                conversation_history=context,
-                user_input=user_input,
-                question_count=total_answered,  # Use answered count, not total
-                covered_categories=", ".join([str(cat) for cat in covered_categories])
+
+            # Build context and get used preference keys
+            context = self._build_comprehensive_context(conversation_history)
+            used_preference_keys = self._extract_used_preference_keys(conversation_history)
+
+            # Enhanced dynamic prompt for fully dynamic preference keys
+            enhanced_prompt = self._build_fully_dynamic_prompt(
+                context, user_input, total_answered, used_preference_keys
             )
+
+            # Generate with multiple attempts for quality
+            response = self._generate_with_intelligent_retry(enhanced_prompt)
             
-            # Generate response with retry mechanism
-            response = self._generate_with_retry(prompt)
-            logger.info(f"Raw AI response: {response.text[:200]}...")
-            
-            parsed_response = self._parse_ai_response(response.text, total_answered)
-            
-            # Validate and enhance response
-            validated_response = self._validate_and_enhance_response(parsed_response, covered_categories)
-            
-            # Final validation before return
-            if not validated_response.get("question"):
-                logger.warning("No question in validated response, using fallback")
-                return self._get_intelligent_fallback(total_answered, conversation_history)
-            
-            return validated_response
-            
+            # Parse with flexible approach
+            parsed_response = self._flexible_parse_response(response.text, total_answered)
+
+            # Validate and enhance with dynamic keys
+            final_response = self._enhance_fully_dynamic_response(
+                parsed_response, used_preference_keys, total_answered
+            )
+
+            # Quality check - if still not good enough, try one more time
+            if not self._is_quality_response(final_response):
+                logger.info("Response quality insufficient, generating alternative...")
+                alternative_response = self._generate_alternative_dynamic_question(
+                    conversation_history, used_preference_keys, total_answered
+                )
+                if self._is_quality_response(alternative_response):
+                    final_response = alternative_response
+
+            logger.info(f"Generated dynamic question with key '{final_response.get('preference_key')}': '{final_response.get('question', '')[:100]}...'")
+            return final_response
+
         except Exception as e:
-            logger.error(f"Error generating question: {str(e)}")
-            return self._get_intelligent_fallback(question_count, conversation_history)
+            logger.error(f"Error in dynamic generation: {str(e)}")
+            return self._emergency_dynamic_generation(len(conversation_history))
+
+    def _build_fully_dynamic_prompt(self, context: str, user_input: str, question_num: int, used_keys: set) -> str:
+        """Build prompt that ensures priority categories are covered with dynamic questions"""
+        
+        # Essential categories that must be covered
+        priority_categories = [
+            "dietary_style",      # What food do you eat?
+            "spice_tolerance",    # How spicy do you like food?
+            "food_allergies",     # Any foods you can't eat?
+            "regional_cuisines",  # What kind of Indian food do you like?
+            "health_conditions",  # Any health issues with food?
+            "family_needs",       # Do you cook for family?
+            "cooking_constraints", # How much time do you have to cook?
+            "meal_complexity",    # Do you like simple or fancy meals?
+            "fasting_observances", # Do you fast for religious reasons?
+            "general_preference"  # Any other food likes/dislikes?
+        ]
+        
+        # Find next priority category to cover
+        uncovered_priority = [cat for cat in priority_categories if cat not in used_keys]
+        next_priority = uncovered_priority[0] if uncovered_priority else "general_preference"
+        
+        # Get guidance for this category
+        category_guidance = self._get_priority_category_guidance(next_priority)
+        
+        base_prompt = f"""
+You are a friendly meal planning expert helping someone understand their food preferences.
+You need to ask simple, everyday questions to learn about their eating habits.
+
+CONVERSATION SO FAR:
+{context}
+
+USER JUST SAID: {user_input}
+
+THIS IS QUESTION {question_num + 1} OF 10 TOTAL QUESTIONS.
+
+ESSENTIAL CATEGORIES TO COVER: {', '.join(priority_categories)}
+ALREADY COVERED: {', '.join(used_keys) if used_keys else 'None'}
+STILL NEED TO COVER: {', '.join(uncovered_priority) if uncovered_priority else 'All covered'}
+
+PRIORITY FOR THIS QUESTION: {next_priority}
+{category_guidance}
+
+YOUR TASK:
+1. Use the preference_key: {next_priority}
+2. Ask a simple, friendly question about this specific food preference area
+3. Provide 4 realistic options + "Other"
+
+QUESTION RULES:
+- Keep it simple and conversational (max 12 words)
+- Ask about real everyday food situations
+- Connect to previous answers when possible
+- Use "you" and friendly language
+
+RESPONSE FORMAT (EXACT FORMAT REQUIRED):
+Question: [Simple friendly question about {next_priority.replace('_', ' ')} - max 12 words]
+
+A) [Realistic option 1]  
+B) [Realistic option 2]  
+C) [Realistic option 3]  
+D) [Realistic option 4]  
+E) Other (please specify)
+
+Preference_Key: {next_priority}
+
+EXAMPLE QUESTIONS FOR EACH CATEGORY:
+
+dietary_style: "What type of food do you usually eat?"
+- A) Vegetarian only  B) Non-vegetarian  C) Vegan  D) Jain food
+
+spice_tolerance: "How spicy do you like your food?"
+- A) No spice at all  B) Mild spice  C) Medium spicy  D) Very spicy
+
+food_allergies: "Are there any foods you cannot eat?"
+- A) No restrictions  B) Lactose intolerant  C) Gluten-free  D) Nut allergies
+
+regional_cuisines: "Which regional cuisine do you prefer most?"
+- A) North Indian  B) South Indian  C) Gujarati  D) Bengali
+
+health_conditions: "Do you have any health conditions affecting food?"
+- A) None  B) Diabetes  C) High blood pressure  D) Thyroid
+
+family_needs: "Do you need to consider family preferences?"
+- A) Just for me  B) Sometimes  C) Always needed  D) Very important
+
+cooking_constraints: "How much time do you have for cooking?"
+- A) Plenty of time  B) 30 minutes max  C) Quick meals only  D) Very little time
+
+meal_complexity: "What cooking style do you prefer?"
+- A) Simple daily food  B) Sometimes elaborate  C) Love detailed cooking  D) Depends on occasion
+
+fasting_observances: "Do you follow any fasting practices?"
+- A) No fasting  B) Weekly vrat  C) Navratri  D) Ekadashi
+
+general_preference: "Any other food preferences to consider?"
+- A) Low oil  B) High protein  C) Traditional style  D) Modern fusion
+
+Make sure to:
+1. Use EXACTLY the preference_key: {next_priority}
+2. Ask a question that clearly relates to this category
+3. Provide options that make sense for this category
+
+"""
+
+        return base_prompt
     
-    def _generate_with_retry(self, prompt: str, max_retries: int = 3) -> Any:
-        """Generate response with retry mechanism"""
-        for attempt in range(max_retries):
+    def _get_priority_category_guidance(self, category: str) -> str:
+        """Get specific guidance for priority categories"""
+        guidance = {
+            "dietary_style": """
+Ask about their primary eating style - vegetarian, non-vegetarian, vegan, Jain, etc.
+This is fundamental for all meal planning. Keep it simple and clear.
+""",
+            "spice_tolerance": """
+Ask about their spice preference level - mild, medium, spicy, very spicy.
+This affects every recipe recommendation. Use everyday language.
+""",
+            "food_allergies": """
+Ask if they have any foods they cannot eat due to allergies or intolerances.
+Critical for safety. Include common ones like dairy, gluten, nuts.
+""",
+            "regional_cuisines": """
+Ask about their preferred regional Indian cuisine style.
+This helps narrow down recipe types. Include North/South Indian, Gujarati, Bengali, etc.
+""",
+            "health_conditions": """
+Ask if they have any health conditions that affect their diet.
+Include common ones like diabetes, high BP, thyroid. Important for meal planning.
+""",
+            "family_needs": """
+Ask if they need to consider family members' preferences when cooking.
+This affects portion sizes and recipe choices. Keep it practical.
+""",
+            "cooking_constraints": """
+Ask about their available cooking time and constraints.
+Critical for suggesting appropriate recipes. Focus on time availability.
+""",
+            "meal_complexity": """
+Ask about their preferred cooking style - simple daily food vs elaborate cooking.
+This determines recipe complexity levels. Keep it relatable.
+""",
+            "fasting_observances": """
+Ask if they follow any religious fasting practices.
+Important for meal timing and ingredient restrictions. Include common vrats.
+""",
+            "general_preference": """
+Ask about any other specific food preferences or requirements.
+Catch-all for anything not covered. Keep it open-ended but focused.
+"""
+        }
+        
+        return guidance.get(category, "Ask a simple question about their food preferences.")
+    
+    def _extract_used_preference_keys(self, conversation_history: List[Dict]) -> set:
+        """Extract all preference keys that have been used"""
+        used_keys = set()
+        for msg in conversation_history:
+            if msg.get("preference_key") and msg.get("answer"):
+                used_keys.add(msg["preference_key"])
+        
+        logger.info(f"Used preference keys: {used_keys}")
+        return used_keys
+
+    def _generate_with_intelligent_retry(self, prompt: str, max_attempts: int = 3) -> Any:
+        """Generate with intelligent retry and prompt refinement"""
+        
+        for attempt in range(max_attempts):
             try:
+                logger.info(f"LLM generation attempt {attempt + 1}/{max_attempts}")
+                
+                # Modify prompt slightly for retries
+                if attempt > 0:
+                    retry_prompt = prompt + f"\n\nPREVIOUS ATTEMPT {attempt} FAILED. Please follow the EXACT format and create a truly unique preference_key."
+                else:
+                    retry_prompt = prompt
+                
                 response = self.model.generate_content(
-                    prompt,
+                    retry_prompt,
                     generation_config=self.generation_config
                 )
-                if response and response.text:
+                
+                if response and response.text and len(response.text.strip()) > 20:
+                    logger.info(f"LLM generated response (attempt {attempt + 1}): {response.text[:150]}...")
                     return response
                 else:
-                    logger.warning(f"Empty response on attempt {attempt + 1}")
+                    logger.warning(f"Empty or too short response on attempt {attempt + 1}")
+                    
             except Exception as e:
                 logger.warning(f"Generation attempt {attempt + 1} failed: {str(e)}")
-                if attempt == max_retries - 1:
+                if attempt == max_attempts - 1:
                     raise
         
-        raise Exception("All generation attempts failed")
-    
-    def _extract_covered_categories(self, conversation: List[Dict]) -> set:
-        """Extract set of covered preference categories - FIXED"""
-        covered = set()
-        for msg in conversation:
-            if msg.get("preference_key") and msg.get("answer"):
-                # Add the preference key as string, not as enum
-                covered.add(msg["preference_key"])
-        logger.info(f"Covered categories: {covered}")
-        return covered
-    
-    def _build_conversation_context(self, conversation: List[Dict]) -> str:
-        """Build enhanced conversation context"""
+        raise Exception("All intelligent generation attempts failed")
+
+    def _flexible_parse_response(self, ai_text: str, question_num: int) -> Dict[str, Any]:
+        """Flexible parsing that extracts dynamic preference keys"""
+        try:
+            logger.info(f"Parsing dynamic LLM response: {ai_text[:200]}...")
+            
+            response = {
+                "question": "",
+                "options": [],
+                "preference_key": None,
+                "is_complete": False
+            }
+            
+            if not ai_text or len(ai_text.strip()) < 10:
+                raise ValueError("Response too short or empty")
+            
+            lines = [line.strip() for line in ai_text.split('\n') if line.strip()]
+            
+            # Extract question (multiple patterns)
+            question_patterns = [
+                r'^Question:\s*(.+)$',
+                r'^Q\d*[:.]\s*(.+)$', 
+                r'^\d+[.)]\s*(.+\?)$',
+                r'^(.+\?)$'  # Any line ending with ?
+            ]
+            
+            for line in lines:
+                if response["question"]:
+                    break
+                    
+                for pattern in question_patterns:
+                    match = re.match(pattern, line, re.IGNORECASE)
+                    if match:
+                        response["question"] = match.group(1).strip()
+                        logger.info(f"Extracted question: {response['question']}")
+                        break
+                
+                # If no pattern match but looks like a question
+                if not response["question"] and ('?' in line or len(line) > 20):
+                    if any(word in line.lower() for word in ['what', 'which', 'how', 'do you', 'would you']):
+                        response["question"] = line
+                        logger.info(f"Inferred question: {response['question']}")
+            
+            # Extract options (flexible patterns)
+            option_patterns = [
+                r'^[A-E][.):\s]\s*(.+)$',
+                r'^[1-5][.)]\s*(.+)$',
+                r'^\*\s*(.+)$',  # Bullet points
+                r'^-\s*(.+)$'    # Dashes
+            ]
+            
+            for line in lines:
+                option_found = False
+                for pattern in option_patterns:
+                    match = re.match(pattern, line, re.IGNORECASE)
+                    if match:
+                        option_text = match.group(1).strip()
+                        if option_text and len(option_text) > 1:
+                            response["options"].append(option_text)
+                            option_found = True
+                            break
+                
+                if option_found:
+                    continue
+            
+            # Extract dynamic preference_key
+            preference_patterns = [
+                r'Preference_Key:\s*([a-zA-Z_][a-zA-Z0-9_]*)',
+                r'PreferenceKey:\s*([a-zA-Z_][a-zA-Z0-9_]*)',
+                r'Key:\s*([a-zA-Z_][a-zA-Z0-9_]*)',
+                r'Category:\s*([a-zA-Z_][a-zA-Z0-9_]*)'
+            ]
+            
+            for pattern in preference_patterns:
+                match = re.search(pattern, ai_text, re.IGNORECASE)
+                if match:
+                    response["preference_key"] = match.group(1).lower()
+                    logger.info(f"Extracted dynamic preference_key: {response['preference_key']}")
+                    break
+            
+            # If no preference key found, generate one from question
+            if not response["preference_key"] and response["question"]:
+                response["preference_key"] = self._generate_preference_key_from_question(
+                    response["question"], question_num
+                )
+                logger.info(f"Generated preference_key from question: {response['preference_key']}")
+            
+            # Ensure we have enough options
+            while len(response["options"]) < 4:
+                response["options"].append(f"Option {len(response['options']) + 1}")
+            
+            # Ensure "Other" is last option
+            response["options"] = response["options"][:4]
+            if not any("other" in opt.lower() for opt in response["options"]):
+                response["options"].append("Other (please specify)")
+            
+            logger.info(f"Parsed dynamic response: Q='{response['question'][:50]}...', Options={len(response['options'])}, Key={response['preference_key']}")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error in flexible parsing: {str(e)}")
+            raise ValueError(f"Failed to parse LLM response: {str(e)}")
+
+    def _generate_preference_key_from_question(self, question: str, question_num: int) -> str:
+        """Generate dynamic preference key from question content"""
+        question_lower = question.lower()
+        
+        # Extract key concepts and convert to preference_key format
+        key_concepts = []
+        
+        # Common food-related terms to preference keys
+        concept_mappings = {
+            "breakfast": "breakfast",
+            "lunch": "lunch", 
+            "dinner": "dinner",
+            "snack": "snack",
+            "spice": "spice",
+            "cooking": "cooking",
+            "meal": "meal",
+            "food": "food",
+            "eat": "eating",
+            "drink": "beverage",
+            "time": "timing",
+            "prefer": "preference",
+            "like": "preference",
+            "portion": "portion",
+            "vegetable": "vegetable",
+            "fruit": "fruit",
+            "protein": "protein",
+            "grain": "grain",
+            "dairy": "dairy",
+            "sweet": "sweet",
+            "salty": "salty",
+            "hot": "temperature",
+            "cold": "temperature",
+            "texture": "texture",
+            "budget": "budget",
+            "shop": "shopping",
+            "leftover": "leftover",
+            "weekend": "weekend",
+            "season": "seasonal",
+            "outside": "dining_out",
+            "restaurant": "dining_out",
+            "kitchen": "kitchen",
+            "equipment": "equipment",
+            "prep": "preparation"
+        }
+        
+        # Find concepts in question
+        for word, concept in concept_mappings.items():
+            if word in question_lower:
+                if concept not in key_concepts:
+                    key_concepts.append(concept)
+        
+        # Additional specific patterns
+        if "how often" in question_lower or "frequency" in question_lower:
+            key_concepts.append("frequency")
+        elif "how much" in question_lower or "amount" in question_lower:
+            key_concepts.append("amount")
+        elif "when" in question_lower:
+            key_concepts.append("timing")
+        elif "where" in question_lower:
+            key_concepts.append("location")
+        elif "what type" in question_lower or "which" in question_lower:
+            key_concepts.append("type")
+        
+        # Generate preference key
+        if key_concepts:
+            if len(key_concepts) == 1:
+                preference_key = f"{key_concepts[0]}_preference"
+            else:
+                # Combine first two concepts
+                preference_key = f"{key_concepts[0]}_{key_concepts[1]}"
+        else:
+            # Fallback based on question number
+            fallback_keys = [
+                "food_habits", "eating_style", "meal_pattern", "dietary_choice",
+                "cooking_method", "flavor_profile", "portion_control", "meal_timing",
+                "nutrition_focus", "food_enjoyment"
+            ]
+            preference_key = fallback_keys[question_num % len(fallback_keys)]
+        
+        # Ensure valid format
+        preference_key = re.sub(r'[^a-z0-9_]', '_', preference_key.lower())
+        preference_key = re.sub(r'_+', '_', preference_key).strip('_')
+        
+        return preference_key
+
+    def _enhance_fully_dynamic_response(
+        self, parsed_response: Dict, used_keys: set, question_num: int
+    ) -> Dict[str, Any]:
+        """Enhance response ensuring unique dynamic preference keys"""
+        try:
+            # Ensure question quality
+            question = parsed_response.get("question", "").strip()
+            if not question or len(question) < 10:
+                question = f"What's your preference for meal planning? (Question {question_num + 1})"
+            
+            # Ensure good options
+            options = parsed_response.get("options", [])
+            if len(options) < 4:
+                options = self._generate_contextual_options(question, question_num)
+            
+            # Ensure unique dynamic preference key
+            preference_key = parsed_response.get("preference_key")
+            if not preference_key or preference_key in used_keys:
+                preference_key = self._generate_unique_preference_key(used_keys, question, question_num)
+            
+            return {
+                "question": question,
+                "options": options[:4] + ["Other (please specify)"],
+                "preference_key": preference_key,
+                "is_complete": False
+            }
+            
+        except Exception as e:
+            logger.error(f"Error enhancing response: {str(e)}")
+            return self._emergency_dynamic_generation(question_num)
+
+    def _generate_unique_preference_key(self, used_keys: set, question: str, question_num: int) -> str:
+        """Generate a unique preference key not in used_keys"""
+        base_key = self._generate_preference_key_from_question(question, question_num)
+        
+        # If base key is unique, use it
+        if base_key not in used_keys:
+            return base_key
+        
+        # Try variations
+        for i in range(1, 10):
+            variant_key = f"{base_key}_{i}"
+            if variant_key not in used_keys:
+                return variant_key
+        
+        # Fallback with timestamp-like suffix
+        import time
+        timestamp_suffix = str(int(time.time()))[-3:]
+        fallback_key = f"preference_{timestamp_suffix}"
+        
+        return fallback_key
+
+    def _generate_alternative_dynamic_question(
+        self, conversation_history: List[Dict], used_keys: set, question_num: int
+    ) -> Dict[str, Any]:
+        """Generate alternative with completely new dynamic preference key"""
+        try:
+            # Generate a completely new preference key
+            new_key = self._generate_creative_preference_key(used_keys, question_num)
+            
+            # Simple dynamic questions with creative keys
+            creative_questions = {
+                f"snacking_style_{question_num}": {
+                    "question": "How do you usually snack?",
+                    "options": ["Healthy snacks only", "Whatever's available", "Sweet treats", "Salty/savory snacks"]
+                },
+                f"cooking_motivation_{question_num}": {
+                    "question": "What motivates your cooking?",
+                    "options": ["Health benefits", "Taste and flavor", "Time saving", "Cost saving"]
+                },
+                f"meal_satisfaction_{question_num}": {
+                    "question": "What makes a meal satisfying?",
+                    "options": ["Large portions", "Rich flavors", "Nutritional value", "Comfort feeling"]
+                },
+                f"food_exploration_{question_num}": {
+                    "question": "How adventurous are you with food?",
+                    "options": ["Love trying new things", "Sometimes try new", "Stick to favorites", "Very particular"]
+                },
+                f"eating_environment_{question_num}": {
+                    "question": "Where do you prefer eating?",
+                    "options": ["At dining table", "While watching TV", "In kitchen", "Anywhere convenient"]
+                }
+            }
+            
+            # Select a question that uses a key not in used_keys
+            for key, data in creative_questions.items():
+                if key not in used_keys:
+                    return {
+                        "question": data["question"],
+                        "options": data["options"] + ["Other (please specify)"],
+                        "preference_key": key,
+                        "is_complete": False
+                    }
+            
+            # Ultimate fallback
+            unique_key = f"custom_preference_{question_num}_{len(used_keys)}"
+            return {
+                "question": "What other food preferences should we know?",
+                "options": ["Texture preferences", "Temperature preferences", "Flavor combinations", "Eating schedule", "Other (please specify)"],
+                "preference_key": unique_key,
+                "is_complete": False
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating alternative: {str(e)}")
+            return self._emergency_dynamic_generation(question_num)
+
+    def _generate_creative_preference_key(self, used_keys: set, question_num: int) -> str:
+        """Generate creative preference keys"""
+        creative_bases = [
+            "flavor_balance", "meal_rhythm", "cooking_confidence", "ingredient_variety",
+            "portion_awareness", "eating_pace", "food_temperature", "texture_variety",
+            "cooking_creativity", "meal_planning", "leftover_usage", "seasonal_adaptation",
+            "social_eating", "comfort_foods", "healthy_balance", "cooking_tools",
+            "shopping_style", "food_storage", "meal_preparation", "eating_habits"
+        ]
+        
+        # Find unused base
+        for base in creative_bases:
+            test_key = f"{base}_{question_num}"
+            if test_key not in used_keys:
+                return test_key
+        
+        # Generate completely unique key
+        import time
+        unique_suffix = str(int(time.time()))[-4:]
+        return f"dynamic_pref_{unique_suffix}"
+
+    def _generate_contextual_options(self, question: str, question_num: int) -> List[str]:
+        """Generate contextual options based on question content"""
+        question_lower = question.lower()
+        
+        # Context-based option sets
+        if any(word in question_lower for word in ["snack", "snacking"]):
+            return ["Rarely snack", "Healthy snacks", "Whatever available", "Multiple times daily"]
+        elif any(word in question_lower for word in ["cook", "cooking"]):
+            return ["Love cooking", "Cook when needed", "Quick meals only", "Avoid cooking"]
+        elif any(word in question_lower for word in ["portion", "amount"]):
+            return ["Small portions", "Medium portions", "Large portions", "Varies by mood"]
+        elif any(word in question_lower for word in ["time", "timing", "when"]):
+            return ["Very regular", "Somewhat regular", "Flexible timing", "No set schedule"]
+        elif any(word in question_lower for word in ["prefer", "like", "favorite"]):
+            return ["Strong preferences", "Some preferences", "Open to most", "Very flexible"]
+        else:
+            return ["Yes, always", "Sometimes", "Rarely", "Never"]
+
+    def _is_quality_response(self, response: Dict) -> bool:
+        """Check if response meets quality standards"""
+        try:
+            question = response.get("question", "")
+            options = response.get("options", [])
+            preference_key = response.get("preference_key")
+            
+            # Quality checks
+            if not question or len(question.strip()) < 10:
+                return False
+            
+            if len(options) != 5:  # 4 + Other
+                return False
+            
+            if not preference_key or not re.match(r'^[a-z][a-z0-9_]*$', preference_key):
+                return False
+            
+            # Check for meaningful content
+            if question.count(" ") < 3:  # Too short
+                return False
+            
+            return True
+            
+        except Exception:
+            return False
+
+    def _emergency_dynamic_generation(self, question_num: int) -> Dict[str, Any]:
+        """Emergency generation with guaranteed dynamic key"""
+        try:
+            import time
+            unique_suffix = str(int(time.time()))[-4:]
+            
+            emergency_questions = [
+                {
+                    "question": "What's most important in your daily meals?",
+                    "options": ["Taste and flavor", "Health benefits", "Quick preparation", "Cost effectiveness"],
+                    "key": f"meal_priority_{unique_suffix}"
+                },
+                {
+                    "question": "How flexible are your eating times?",
+                    "options": ["Very regular schedule", "Somewhat flexible", "Quite flexible", "No fixed times"],
+                    "key": f"eating_flexibility_{unique_suffix}"
+                },
+                {
+                    "question": "What cooking style suits you?",
+                    "options": ["Simple and quick", "Traditional methods", "Modern techniques", "Whatever works"],
+                    "key": f"cooking_approach_{unique_suffix}"
+                }
+            ]
+            
+            selected = emergency_questions[question_num % len(emergency_questions)]
+            
+            return {
+                "question": selected["question"],
+                "options": selected["options"] + ["Other (please specify)"],
+                "preference_key": selected["key"],
+                "is_complete": False
+            }
+            
+        except Exception as e:
+            logger.error(f"Emergency generation failed: {str(e)}")
+            return {
+                "question": "What would you like us to know about your food preferences?",
+                "options": ["I have specific dietary needs", "I'm open to suggestions", "I like traditional food", "I enjoy variety", "Other (please specify)"],
+                "preference_key": f"general_food_pref_{question_num}",
+                "is_complete": False
+            }
+
+    def _build_comprehensive_context(self, conversation: List[Dict]) -> str:
+        """Build detailed context for LLM"""
         if not conversation:
-            return "New user starting onboarding process"
+            return "Starting fresh onboarding conversation"
         
-        context_parts = []
-        for i, msg in enumerate(conversation):
+        context_parts = ["CONVERSATION HISTORY:"]
+        
+        for i, msg in enumerate(conversation, 1):
             if msg.get("question"):
-                context_parts.append(f"Q{i+1}: {msg['question']}")
+                context_parts.append(f"Q{i}: {msg['question']}")
+                
                 if msg.get("answer"):
-                    context_parts.append(f"A{i+1}: {msg['answer']}")
-                    if msg.get("preference_key"):
-                        context_parts.append(f"Category: {msg['preference_key']}")
-                context_parts.append("")  # Add spacing
+                    context_parts.append(f"A{i}: {msg['answer']}")
+                    
+                if msg.get("preference_key"):
+                    context_parts.append(f"Preference_Key: {msg['preference_key']}")
+                    
+                context_parts.append("")  # Spacing
         
-        return "\n".join(context_parts) if context_parts else "Starting conversation"
-    
+        return "\n".join(context_parts)
+
     def _generate_completion_response(self, conversation: List[Dict]) -> Dict[str, Any]:
         """Generate personalized completion response"""
         answered_questions = [msg for msg in conversation if msg.get("answer")]
         
-        # Extract basic preferences for summary (with safe fallbacks)
-        basic_summary = {
-            "dietary_style": "Not specified",
-            "spice_tolerance": "Medium",
-            "regional_preference": "Indian cuisine"
-        }
+        # Build summary from actual responses
+        summary_parts = []
+        for msg in answered_questions[:3]:  # Show first 3 key preferences
+            if msg.get("preference_key") and msg.get("answer"):
+                key = msg["preference_key"].replace("_", " ").title()
+                answer = msg["answer"]
+                summary_parts.append(f"• {key}: {answer}")
         
-        # Try to extract some key preferences for display
-        for msg in answered_questions:
-            pref_key = msg.get("preference_key", "")
-            answer = msg.get("answer", "")
-            
-            if "dietary" in pref_key.lower() and answer:
-                basic_summary["dietary_style"] = answer
-            elif "spice" in pref_key.lower() and answer:
-                basic_summary["spice_tolerance"] = answer
-            elif "regional" in pref_key.lower() and answer:
-                basic_summary["regional_preference"] = answer
+        summary_text = "\n".join(summary_parts) if summary_parts else "• Your personalized preferences recorded"
         
         completion_message = f"""Perfect! I have everything needed to create your personalized meal plans.
 
-Your Meal Profile Summary:
-• Dietary Style: {basic_summary['dietary_style']}
-• Regional Preference: {basic_summary['regional_preference']}
-• Spice Level: {basic_summary['spice_tolerance']}
+Your Key Preferences:
+{summary_text}
 
-Based on your {len(answered_questions)} responses, we'll create customized meal recommendations just for you!
+Based on your {len(answered_questions)} detailed responses, we'll create customized meal recommendations that match your taste, dietary needs, and lifestyle perfectly!
 
-Ready to generate your personalized meals!"""
+Ready to discover your ideal meal plans!"""
         
         return {
             "question": completion_message,
@@ -184,402 +745,61 @@ Ready to generate your personalized meals!"""
             "is_complete": True,
             "preference_key": None
         }
-    
-    def _parse_ai_response(self, ai_text: str, question_count: int) -> Dict[str, Any]:
-        """Parse AI response with robust error handling - FIXED"""
-        try:
-            logger.info(f"Parsing AI text for question {question_count + 1}: {ai_text[:100]}...")
-            
-            # Initialize default response structure
-            parsed = {
-                "question": "",
-                "options": [],
-                "preference_key": None,
-                "is_complete": False
-            }
-            
-            if not ai_text or not ai_text.strip():
-                logger.warning("Empty AI response received")
-                return self._get_fallback_parsed_response(question_count)
-            
-            lines = ai_text.strip().split('\n')
-            
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                    
-                line_lower = line.lower()
-                
-                # Check for completion indicators
-                completion_indicators = [
-                    "onboarding complete", "perfect! i have everything", 
-                    "ready to generate", "your meal profile", "onboarding is complete"
-                ]
-                
-                if any(indicator in line_lower for indicator in completion_indicators):
-                    parsed["is_complete"] = True
-                    parsed["question"] = ai_text.strip()
-                    return parsed
-                
-                # Skip acknowledgment lines
-                if any(ack in line_lower for ack in ["thanks", "great", "perfect", "got it", "wonderful"]):
-                    continue
-                
-                # Extract question (first substantial line that looks like a question)
-                if not parsed["question"] and len(line) > 10:
-                    if ('?' in line or 
-                        any(starter in line_lower for starter in ['what', 'which', 'how', 'do you', 'are you', 'would you']) or
-                        len(line) > 20):
-                        parsed["question"] = line.rstrip('?') + ('?' if '?' in line else '')
-                        continue
-                
-                # Extract options (A, B, C, D, E format)
-                option_patterns = [
-                    r'^[A-E][\.\):\s]\s*(.+)',
-                    r'^[1-5][\.\)]\s*(.+)',
-                    r'^[A-E]\s*[-:]\s*(.+)'
-                ]
-                
-                option_match = None
-                for pattern in option_patterns:
-                    option_match = re.match(pattern, line, re.IGNORECASE)
-                    if option_match:
-                        option_text = option_match.group(1).strip()
-                        if option_text:
-                            parsed["options"].append(option_text)
-                        break
-                
-                if option_match:
-                    continue
-                
-                # Extract preference key
-                if 'preference_key' in line_lower:
-                    key_patterns = [
-                        r'preference_key[:\s]+([a-zA-Z_]+)',
-                        r'preference[_\s]*key[:\s]+([a-zA-Z_]+)',
-                        r'category[:\s]+([a-zA-Z_]+)'
-                    ]
-                    
-                    for pattern in key_patterns:
-                        key_match = re.search(pattern, line, re.IGNORECASE)
-                        if key_match:
-                            parsed["preference_key"] = key_match.group(1).lower()
-                            break
-                    continue
-                
-                # If we don't have a question yet and this is substantial, use it
-                if not parsed["question"] and len(line) > 15:
-                    parsed["question"] = line
-            
-            # Post-processing validation
-            if not parsed["question"]:
-                logger.warning("No question extracted, using fallback")
-                parsed["question"] = self._get_fallback_question(question_count)
-            
-            # Ensure exactly 5 options with E as "Other"
-            while len(parsed["options"]) < 4:
-                parsed["options"].append(f"Option {len(parsed['options']) + 1}")
-            
-            parsed["options"] = parsed["options"][:4]
-            parsed["options"].append("Other (please specify)")
-            
-            # Set preference key if missing
-            if not parsed["preference_key"]:
-                parsed["preference_key"] = self._infer_preference_key(parsed["question"], question_count)
-            
-            logger.info(f"Successfully parsed: question='{parsed['question'][:50]}...', options_count={len(parsed['options'])}, key={parsed['preference_key']}")
-            return parsed
-            
-        except Exception as e:
-            logger.error(f"Error parsing AI response: {str(e)}")
-            return self._get_fallback_parsed_response(question_count)
-    
-    def _validate_and_enhance_response(self, parsed_response: Dict[str, Any], covered_categories: set) -> Dict[str, Any]:
-        """Validate and enhance parsed response - FIXED"""
-        try:
-            response = {
-                "question": parsed_response.get("question", ""),
-                "options": parsed_response.get("options", []),
-                "preference_key": parsed_response.get("preference_key"),
-                "is_complete": parsed_response.get("is_complete", False)
-            }
-            
-            # Validate question
-            if not response["question"] or len(response["question"].strip()) < 5:
-                logger.warning("Invalid question detected, using fallback")
-                response["question"] = self._get_fallback_question(len(covered_categories))
-            
-            # Validate options
-            if len(response["options"]) != 5:
-                logger.warning(f"Invalid option count: {len(response['options'])}, normalizing")
-                response["options"] = self._get_normalized_options(response["options"], len(covered_categories))
-            
-            # Validate preference key
-            if not response["preference_key"]:
-                logger.warning("Missing preference key, inferring")
-                response["preference_key"] = self._infer_preference_key(response["question"], len(covered_categories))
-            
-            # Check if this category is already covered - if so, find alternative
-            if response["preference_key"] in covered_categories:
-                logger.info(f"Category {response['preference_key']} already covered, finding alternative")
-                response["preference_key"] = self._get_next_uncovered_category(covered_categories)
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Error in validation: {str(e)}")
-            return self._get_fallback_parsed_response(len(covered_categories) if covered_categories else 0)
-    
-    def _get_normalized_options(self, existing_options: List[str], question_count: int) -> List[str]:
-        """Get properly formatted 5 options"""
-        try:
-            options = []
-            
-            # Use existing options (up to 4)
-            for opt in existing_options[:4]:
-                if opt and opt.strip():
-                    options.append(opt.strip())
-            
-            # Fill missing options
-            default_options = self._get_default_options(question_count)
-            while len(options) < 4:
-                idx = len(options)
-                if idx < len(default_options):
-                    options.append(default_options[idx])
-                else:
-                    options.append(f"Option {idx + 1}")
-            
-            # Always add "Other"
-            options.append("Other (please specify)")
-            return options[:5]
-            
-        except Exception as e:
-            logger.error(f"Error normalizing options: {str(e)}")
-            return ["Yes", "No", "Sometimes", "Not sure", "Other (please specify)"]
-    
-    def _get_default_options(self, question_count: int) -> List[str]:
-        """Get contextual default options based on question number"""
-        default_sets = [
-            ["Vegetarian", "Non-vegetarian", "Vegan", "Jain"],  # Q1: Dietary
-            ["None", "Lactose intolerant", "Gluten-free", "Nut allergies"],  # Q2: Allergies
-            ["Mild", "Medium", "Spicy", "Very spicy"],  # Q3: Spice
-            ["None", "Diabetes", "High BP", "Thyroid"],  # Q4: Health
-            ["North Indian", "South Indian", "Gujarati", "Bengali"],  # Q5: Regional
-            ["Not needed", "Sometimes", "Always needed", "Very important"],  # Q6: Family
-            ["None", "Weekly vrat", "Navratri", "Ekadashi"],  # Q7: Fasting
-            ["No constraints", "Time limited", "Skill limited", "Equipment limited"],  # Q8: Cooking
-            ["Simple", "Moderate", "Elaborate", "Festival style"],  # Q9: Complexity
-            ["Any preference", "Low oil", "High protein", "Traditional"]  # Q10: Final
-        ]
-        
-        if question_count < len(default_sets):
-            return default_sets[question_count]
-        return ["Option 1", "Option 2", "Option 3", "Option 4"]
-    
-    def _get_next_uncovered_category(self, covered_categories: set) -> str:
-        """Get next uncovered preference category"""
-        priority_order = [
-            "dietary_style",
-            "food_allergies", 
-            "spice_tolerance",
-            "health_conditions",
-            "regional_cuisines",
-            "family_needs",
-            "fasting_observances",
-            "cooking_constraints",
-            "meal_complexity",
-            "general_preference"
-        ]
-        
-        for category in priority_order:
-            if category not in covered_categories:
-                return category
-        
-        return f"preference_{len(covered_categories) + 1}"
-    
-    def _infer_preference_key(self, question: str, question_count: int) -> str:
-        """Infer preference key from question content"""
-        question_lower = question.lower()
-        
-        # Enhanced keyword mapping
-        if any(word in question_lower for word in ["dietary", "diet", "vegetarian", "meat", "jain"]):
-            return "dietary_style"
-        elif any(word in question_lower for word in ["allerg", "lactose", "gluten", "intolerant"]):
-            return "food_allergies"
-        elif any(word in question_lower for word in ["spice", "spicy", "hot", "mild"]):
-            return "spice_tolerance"
-        elif any(word in question_lower for word in ["health", "diabetes", "bp", "thyroid"]):
-            return "health_conditions"
-        elif any(word in question_lower for word in ["cuisine", "regional", "gujarati", "bengali"]):
-            return "regional_cuisines"
-        elif any(word in question_lower for word in ["family", "children", "kids", "child"]):
-            return "family_needs"
-        elif any(word in question_lower for word in ["fast", "vrat", "religious"]):
-            return "fasting_observances"
-        elif any(word in question_lower for word in ["time", "cooking", "preparation", "skill"]):
-            return "cooking_constraints"
-        elif any(word in question_lower for word in ["simple", "complex", "elaborate", "style"]):
-            return "meal_complexity"
-        
-        # Fallback based on question sequence
-        fallback_keys = [
-            "dietary_style", "food_allergies", "spice_tolerance", "health_conditions",
-            "regional_cuisines", "family_needs", "fasting_observances", 
-            "cooking_constraints", "meal_complexity", "general_preference"
-        ]
-        
-        if question_count < len(fallback_keys):
-            return fallback_keys[question_count]
-        
-        return "general_preference"
-    
-    def _get_fallback_question(self, question_count: int) -> str:
-        """Get fallback question based on sequence"""
-        fallback_questions = [
-            "What's your primary dietary preference?",
-            "Do you have any food allergies or intolerances?",
-            "What's your spice tolerance level?",
-            "Do you have any health conditions to consider?",
-            "Which regional cuisine do you prefer?",
-            "Do you need family-friendly meal options?",
-            "Do you follow any fasting practices?",
-            "What are your cooking constraints?",
-            "Do you prefer simple or elaborate meals?",
-            "Any other dietary preferences we should know?"
-        ]
-        
-        if question_count < len(fallback_questions):
-            return fallback_questions[question_count]
-        
-        return "What other food preferences should we consider?"
-    
-    def _get_fallback_parsed_response(self, question_count: int) -> Dict[str, Any]:
-        """Complete fallback response"""
-        fallback_data = [
-            {
-                "question": "What's your primary dietary preference?",
-                "options": ["Vegetarian", "Non-vegetarian", "Vegan", "Jain", "Other (please specify)"],
-                "key": "dietary_style"
-            },
-            {
-                "question": "Do you have any food allergies?",
-                "options": ["None", "Lactose intolerant", "Gluten-free", "Nut allergies", "Other (please specify)"],
-                "key": "food_allergies"
-            },
-            {
-                "question": "What's your spice tolerance?",
-                "options": ["Mild", "Medium", "Spicy", "Very spicy", "Other (please specify)"],
-                "key": "spice_tolerance"
-            },
-            {
-                "question": "Any health conditions to consider?",
-                "options": ["None", "Diabetes", "High BP", "Thyroid", "Other (please specify)"],
-                "key": "health_conditions"
-            },
-            {
-                "question": "Which regional cuisine do you prefer?",
-                "options": ["North Indian", "South Indian", "Gujarati", "Bengali", "Other (please specify)"],
-                "key": "regional_cuisines"
-            },
-            {
-                "question": "Do you need family-friendly options?",
-                "options": ["Not needed", "Sometimes", "Always", "Very important", "Other (please specify)"],
-                "key": "family_needs"
-            },
-            {
-                "question": "Do you follow any fasting practices?",
-                "options": ["None", "Weekly vrat", "Navratri", "Ekadashi", "Other (please specify)"],
-                "key": "fasting_observances"
-            },
-            {
-                "question": "What are your cooking time constraints?",
-                "options": ["No constraints", "Quick meals only", "Moderate time", "Time flexible", "Other (please specify)"],
-                "key": "cooking_constraints"
-            },
-            {
-                "question": "Do you prefer simple or elaborate meals?",
-                "options": ["Simple everyday", "Moderate complexity", "Elaborate festive", "Varies by occasion", "Other (please specify)"],
-                "key": "meal_complexity"
-            },
-            {
-                "question": "Any other dietary preferences?",
-                "options": ["Low oil", "High protein", "Traditional style", "Modern fusion", "Other (please specify)"],
-                "key": "general_preference"
-            }
-        ]
-        
-        index = min(question_count, len(fallback_data) - 1)
-        selected = fallback_data[index]
-        
-        return {
-            "question": selected["question"],
-            "options": selected["options"],
-            "preference_key": selected["key"],
-            "is_complete": question_count >= 9  # Complete only after 10 questions (0-9 index)
-        }
-    
-    def _get_intelligent_fallback(self, question_count: int, conversation_history: List[Dict]) -> Dict[str, Any]:
-        """Intelligent fallback with proper question counting"""
-        answered_count = len([msg for msg in conversation_history if msg.get("answer")])
-        
-        logger.info(f"Intelligent fallback: answered={answered_count}, required=10")
-        
-        # Only complete if we truly have 10+ answers
-        if answered_count >= 10:
-            return self._generate_completion_response(conversation_history)
-        
-        return self._get_fallback_parsed_response(answered_count)
 
 
 # =============================================================================
-# ENHANCED PREFERENCE EXTRACTOR - FIXED
+# DYNAMIC PREFERENCE EXTRACTOR - NO STATIC CATEGORIES
 # =============================================================================
 
 class PreferenceExtractor:
-    """Enhanced preference extraction with comprehensive mapping"""
+    """Priority-aware preference extraction - ensures essential categories are captured"""
     
     @staticmethod
     def extract_preferences(conversation: List[Dict]) -> Dict[str, str]:
-        """Extract structured preferences - FIXED error handling"""
+        """Extract all preferences ensuring priority categories are covered"""
+        
+        # Initialize with priority categories
+        priority_categories = [
+            "dietary_style", "spice_tolerance", "food_allergies", "regional_cuisines",
+            "health_conditions", "family_needs", "cooking_constraints", 
+            "meal_complexity", "fasting_observances", "general_preference"
+        ]
+        
+        # Initialize all priority categories with default values
         preferences = {
             "dietary_style": "Any",
-            "regional_cuisines": "Any", 
             "spice_tolerance": "Medium",
-            "health_conditions": "None",
             "food_allergies": "None",
-            "family_needs": "Not needed",
+            "regional_cuisines": "Any",
+            "health_conditions": "None",
+            "family_needs": "Not specified",
+            "cooking_constraints": "Flexible",
+            "meal_complexity": "Simple",
             "fasting_observances": "None",
-            "cooking_constraints": "None",
-            "meal_complexity": "Simple"
+            "general_preference": "No specific preference"
         }
 
         logger.info(f"Extracting preferences from {len(conversation)} conversation items")
+        logger.info(f"Priority categories: {priority_categories}")
 
-        # Process each conversation item with safe key access
+        # Process each conversation item
         for item in conversation:
             try:
                 preference_key = item.get("preference_key")
                 answer = item.get("answer", "").strip()
-                question = item.get("question", "").lower()
                 
-                if not answer:
+                if not preference_key or not answer:
                     continue
                 
                 logger.info(f"Processing: preference_key={preference_key}, answer='{answer}'")
                 
-                # Primary extraction using preference_key
-                if preference_key and preference_key in preferences:
-                    normalized_answer = PreferenceExtractor._normalize_answer(answer, preference_key)
-                    preferences[preference_key] = normalized_answer
-                    logger.info(f"Set {preference_key} = {normalized_answer}")
-                else:
-                    # Fallback: detect category from question content
-                    detected_key = PreferenceExtractor._detect_preference_key_from_question(question)
-                    if detected_key and detected_key in preferences:
-                        normalized_answer = PreferenceExtractor._normalize_answer(answer, detected_key)
-                        preferences[detected_key] = normalized_answer
-                        logger.info(f"Detected {detected_key} from question, set = {normalized_answer}")
+                # Clean the answer
+                normalized_answer = PreferenceExtractor._normalize_answer(answer)
+                
+                # Store the preference
+                preferences[preference_key] = normalized_answer
+                
+                logger.info(f"Set preference: {preference_key} = {normalized_answer}")
             
             except Exception as e:
                 logger.error(f"Error processing conversation item: {str(e)}")
@@ -589,68 +809,57 @@ class PreferenceExtractor:
         return preferences
     
     @staticmethod
-    def _detect_preference_key_from_question(question: str) -> Optional[str]:
-        """Enhanced preference key detection from question content"""
-        if not question:
-            return None
-            
-        question = question.lower().strip()
+    def get_missing_priority_categories(conversation: List[Dict]) -> List[str]:
+        """Get list of priority categories that haven't been covered yet"""
+        priority_categories = [
+            "dietary_style", "spice_tolerance", "food_allergies", "regional_cuisines",
+            "health_conditions", "family_needs", "cooking_constraints", 
+            "meal_complexity", "fasting_observances", "general_preference"
+        ]
         
-        # Comprehensive keyword patterns
-        detection_patterns = {
-            "dietary_style": [
-                "dietary", "diet", "vegetarian", "non-vegetarian", "vegan", "jain",
-                "eating habit", "food preference", "onions", "garlic", "meat", "eggs"
-            ],
-            "regional_cuisines": [
-                "cuisine", "regional", "south indian", "north indian", "gujarati",
-                "bengali", "punjabi", "style", "food culture", "cooking style"
-            ],
-            "spice_tolerance": [
-                "spice", "spicy", "heat", "mild", "hot", "chili", "spiciness",
-                "tolerance", "spice level", "how spicy", "pepper"
-            ],
-            "health_conditions": [
-                "health", "diabetes", "thyroid", "pressure", "cholesterol", "heart",
-                "medical", "condition", "disease", "disorder", "blood sugar"
-            ],
-            "food_allergies": [
-                "allerg", "allergic", "intolerant", "lactose", "gluten", "nuts",
-                "dairy", "reaction", "avoid", "cannot eat", "sensitivity"
-            ],
-            "family_needs": [
-                "children", "kids", "family", "child", "son", "daughter",
-                "kid-friendly", "mild for kids", "family-friendly", "toddler"
-            ],
-            "fasting_observances": [
-                "fast", "fasting", "vrat", "navratri", "ekadashi", "religious",
-                "observance", "festival", "monday", "tuesday"
-            ],
-            "cooking_constraints": [
-                "time", "cooking time", "preparation", "quick", "busy", "working",
-                "constraint", "how long", "minutes", "hours"
-            ],
-            "meal_complexity": [
-                "simple", "elaborate", "complex", "festive", "daily", "everyday",
-                "home style", "traditional", "quick meal"
-            ]
-        }
+        covered_keys = set()
+        for item in conversation:
+            if item.get("preference_key") and item.get("answer"):
+                covered_keys.add(item["preference_key"])
         
-        # Find best matching category
-        best_category = None
-        max_score = 0
-        
-        for category, keywords in detection_patterns.items():
-            score = sum(1 for keyword in keywords if keyword in question)
-            if score > max_score:
-                max_score = score
-                best_category = category
-        
-        return best_category if max_score > 0 else None
+        missing = [cat for cat in priority_categories if cat not in covered_keys]
+        logger.info(f"Missing priority categories: {missing}")
+        return missing
     
     @staticmethod
-    def _normalize_answer(answer: str, preference_key: str) -> str:
-        """Enhanced answer normalization"""
+    def get_coverage_status(conversation: List[Dict]) -> Dict[str, bool]:
+        """Get coverage status of all priority categories"""
+        priority_categories = [
+            "dietary_style", "spice_tolerance", "food_allergies", "regional_cuisines",
+            "health_conditions", "family_needs", "cooking_constraints", 
+            "meal_complexity", "fasting_observances", "general_preference"
+        ]
+        
+        covered_keys = set()
+        for item in conversation:
+            if item.get("preference_key") and item.get("answer"):
+                covered_keys.add(item["preference_key"])
+        
+        status = {}
+        for category in priority_categories:
+            status[category] = category in covered_keys
+        
+        return status
+    
+    @staticmethod
+    def get_completion_percentage(conversation: List[Dict]) -> float:
+        """Get completion percentage of priority categories"""
+        status = PreferenceExtractor.get_coverage_status(conversation)
+        covered_count = sum(1 for covered in status.values() if covered)
+        total_count = len(status)
+        
+        percentage = (covered_count / total_count) * 100
+        logger.info(f"Coverage: {covered_count}/{total_count} ({percentage:.1f}%)")
+        return percentage
+    
+    @staticmethod
+    def _normalize_answer(answer: str) -> str:
+        """Normalize answer - remove option prefixes and clean"""
         if not answer:
             return "Not specified"
             
@@ -663,109 +872,40 @@ class PreferenceExtractor:
         elif re.match(r'^[1-5][.)]', answer_cleaned):
             answer_cleaned = answer_cleaned[2:].strip()
         
-        answer_lower = answer_cleaned.lower()
+        # Return cleaned answer
+        return answer_cleaned.title() if answer_cleaned else "Not specified"
+
+    @staticmethod
+    def get_preference_summary(preferences: Dict[str, str]) -> str:
+        """Generate human-readable summary of all dynamic preferences"""
+        if not preferences:
+            return "No preferences recorded"
         
-        # Use preference mappings if available
-        try:
-            if preference_key in PREFERENCE_MAPPINGS:
-                mapping = PREFERENCE_MAPPINGS[preference_key]
-                
-                # Direct match
-                if answer_lower in mapping:
-                    return mapping[answer_lower]
-                
-                # Partial matching
-                for key, value in mapping.items():
-                    if key in answer_lower or answer_lower in key:
-                        return value
-        except Exception as e:
-            logger.error(f"Error in preference mapping: {str(e)}")
+        summary_parts = []
+        for key, value in preferences.items():
+            # Convert snake_case to readable format
+            readable_key = key.replace("_", " ").title()
+            summary_parts.append(f"• {readable_key}: {value}")
         
-        # Category-specific normalization
-        return PreferenceExtractor._category_specific_normalization(answer_cleaned, preference_key)
+        return "\n".join(summary_parts)
     
     @staticmethod
-    def _category_specific_normalization(answer: str, preference_key: str) -> str:
-        """Category-specific normalization logic"""
-        if not answer:
-            return "Not specified"
-            
-        answer_lower = answer.lower()
+    def get_preference_categories(preferences: Dict[str, str]) -> List[str]:
+        """Get list of all dynamic preference categories"""
+        return list(preferences.keys())
+    
+    @staticmethod 
+    def filter_preferences_by_pattern(preferences: Dict[str, str], pattern: str) -> Dict[str, str]:
+        """Filter preferences by key pattern (e.g., 'cooking_*', 'meal_*')"""
+        import re
+        pattern_regex = pattern.replace("*", ".*")
+        filtered = {}
         
-        if preference_key == "dietary_style":
-            if "jain" in answer_lower:
-                return "Jain"
-            elif "vegan" in answer_lower:
-                return "Vegan"
-            elif "vegetarian" in answer_lower and "non" not in answer_lower:
-                return "Vegetarian"
-            elif any(word in answer_lower for word in ["non-veg", "non veg", "meat", "chicken"]):
-                return "Non-vegetarian"
-            elif "egg" in answer_lower:
-                return "Eggetarian"
+        for key, value in preferences.items():
+            if re.match(pattern_regex, key):
+                filtered[key] = value
         
-        elif preference_key == "spice_tolerance":
-            if "mild" in answer_lower or "low" in answer_lower:
-                return "Mild"
-            elif "medium" in answer_lower or "moderate" in answer_lower:
-                return "Medium"
-            elif "very spicy" in answer_lower or "extra spicy" in answer_lower:
-                return "Very Spicy"
-            elif "spicy" in answer_lower or "hot" in answer_lower:
-                return "Spicy"
-        
-        elif preference_key == "health_conditions":
-            if "diabetes" in answer_lower:
-                return "Diabetes"
-            elif "thyroid" in answer_lower:
-                return "Thyroid"
-            elif "bp" in answer_lower or "blood pressure" in answer_lower:
-                return "High Blood Pressure"
-            elif "none" in answer_lower or "healthy" in answer_lower:
-                return "None"
-        
-        elif preference_key == "food_allergies":
-            if "lactose" in answer_lower or "dairy" in answer_lower:
-                return "Lactose Intolerant"
-            elif "gluten" in answer_lower or "wheat" in answer_lower:
-                return "Gluten Intolerant"
-            elif "nut" in answer_lower:
-                return "Nut Allergies"
-            elif "none" in answer_lower or "no allergies" in answer_lower:
-                return "None"
-        
-        elif preference_key == "regional_cuisines":
-            if "south indian" in answer_lower:
-                return "South Indian"
-            elif "north indian" in answer_lower:
-                return "North Indian"
-            elif "gujarati" in answer_lower:
-                return "Gujarati"
-            elif "bengali" in answer_lower:
-                return "Bengali"
-            elif "punjabi" in answer_lower:
-                return "Punjabi"
-        
-        elif preference_key == "family_needs":
-            if any(word in answer_lower for word in ["yes", "always", "required", "needed"]):
-                return "Required"
-            elif any(word in answer_lower for word in ["sometimes", "occasionally"]):
-                return "Sometimes"
-            elif any(word in answer_lower for word in ["no", "never", "not needed"]):
-                return "Not needed"
-        
-        elif preference_key == "fasting_observances":
-            if "weekly" in answer_lower or "vrat" in answer_lower:
-                return "Weekly Vrat"
-            elif "navratri" in answer_lower:
-                return "Navratri"
-            elif "ekadashi" in answer_lower:
-                return "Ekadashi"
-            elif "none" in answer_lower or "no fasting" in answer_lower:
-                return "None"
-        
-        # Return cleaned answer if no specific mapping found
-        return answer.title() if answer else "Not specified"
+        return filtered
 
 
 # =============================================================================
@@ -837,6 +977,7 @@ def get_or_create_session(
         new_session = OnboardingSession(
             session_id=session_id,
             ip_address=ip_address,
+            phone_number=None,
             is_complete=False,
             expires_at=expires_at,
             created_at=datetime.now(timezone.utc),

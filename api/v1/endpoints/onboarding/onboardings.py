@@ -48,7 +48,6 @@ conversation_engine = DynamicConversationEngine()
 
 TOTAL_QUESTIONS = 9  # Set total expected questions
 
-
 TOTAL_QUESTIONS_REQUIRED = 9
 
 
@@ -62,6 +61,7 @@ async def start_dynamic_onboarding(
 ):
     """Start dynamic onboarding - FIXED to require exactly 10 questions"""
     try:
+        
         logger.info(f"Starting onboarding for IP: {ip_address}")
         
         # Get or create session
@@ -487,28 +487,28 @@ async def debug_onboarding_session(
         raise HTTPException(status_code=500, detail=f"Debug error: {str(e)}")
 
 
-@router.delete("/onboarding/reset")
-async def reset_onboarding(
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db),
-    ip_address: str = Depends(get_client_ip)
-):
-    """Reset onboarding for current IP address"""
-    try:
-        # Find existing session
-        existing_session = db.query(OnboardingSession).filter_by(ip_address=ip_address).first()
+# @router.delete("/onboarding/reset")
+# async def reset_onboarding(
+#     request: Request,
+#     response: Response,
+#     db: Session = Depends(get_db),
+#     ip_address: str = Depends(get_client_ip)
+# ):
+#     """Reset onboarding for current IP address"""
+#     try:
+#         # Find existing session
+#         existing_session = db.query(OnboardingSession).filter_by(ip_address=ip_address).first()
         
-        if existing_session:
-            # Delete all onboarding requests for this session
-            db.query(OnboardingRequests).filter_by(session_id=existing_session.session_id).delete()
-            # Delete the session
-            db.delete(existing_session)
-            db.commit()
+#         if existing_session:
+#             # Delete all onboarding requests for this session
+#             db.query(OnboardingRequests).filter_by(session_id=existing_session.session_id).delete()
+#             # Delete the session
+#             db.delete(existing_session)
+#             db.commit()
             
-        return {"message": "Onboarding reset successfully"}
+#         return {"message": "Onboarding reset successfully"}
         
-    except Exception as e:
-        logger.error(f"Error resetting onboarding for {ip_address}: {str(e)}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error resetting onboarding: {str(e)}")
+#     except Exception as e:
+#         logger.error(f"Error resetting onboarding for {ip_address}: {str(e)}")
+#         db.rollback()
+#         raise HTTPException(status_code=500, detail=f"Error resetting onboarding: {str(e)}")

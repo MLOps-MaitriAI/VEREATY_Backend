@@ -7,7 +7,7 @@ from api.v1.models.dish_recommendation.meal_instructions import MealInstructions
 from api.v1.models.dish_recommendation.meal_nutrition_info import MealNutritionInfo
 from api.v1.models.dish_recommendation.meal_requests import MealRequest
 from api.v1.models.user.user_auth import User
-from auth.auth_bearer import JWTBearer
+from auth.auth_bearer import JWTBearer, get_current_user
 from db.session import get_db
 from api.v1.models.onboarding.onboarding_sessions import OnboardingSession
 from api.v1.models.onboarding.onboarding_requests import OnboardingRequests
@@ -29,7 +29,8 @@ async def generate_meals(
     meals: str = "breakfast,lunch,dinner",
     dishes_per_meal: int = 3,
     start_date: str = Query(default=datetime.today().strftime("%Y-%m-%d"),description="Start date in YYYY-MM-DD format (defaults to today)"),
-    num_days: int = Query(1, description="Number of days to generate meal plans for")):
+    num_days: int = Query(1, description="Number of days to generate meal plans for"),
+    current_user: User = Depends(get_current_user)):
     
     try:
         
@@ -41,18 +42,17 @@ async def generate_meals(
         if num_days < 1:
             raise HTTPException(status_code=400,detail="num_days must be at least 1")
 
-        ip_address = request.client.host
 
-        session = db.query(OnboardingSession).filter_by(ip_address=ip_address, is_complete=True).first()
+        onboarding_db=db.query(OnboardingSession).filter(OnboardingSession.phone_number==current_user.phone_number, OnboardingSession.is_complete==True).first()
 
-        if not session:
-            raise HTTPException(status_code=404,detail="No completed session found for this IP")
+        if not onboarding_db:
+            raise HTTPException(status_code=404,detail="No completed session found, Complete onboarding first")
         
-        user_db = db.query(User).filter(User.session_id == session.session_id).first()
+        user_db = db.query(User).filter(User.session_id == onboarding_db.session_id).first()
         if not user_db:
             raise HTTPException(status_code=404, detail="Complete onboarding first before meal generation")
 
-        existing_responses = (db.query(OnboardingRequests).filter_by(session_id=session.session_id).all())
+        existing_responses = (db.query(OnboardingRequests).filter_by(session_id=onboarding_db.session_id).all())
 
         if not existing_responses:
             raise HTTPException(status_code=404,detail="No conversation history found")
@@ -203,8 +203,9 @@ async def generate_meals(
                 meals_by_type[meal_type] = meals_by_type.get(meal_type, 0) + 1
 
             return {
-                "ip_address": ip_address,
-                "session_id": session.session_id,
+                #"ip_address": ip_address,
+                "phone_number":user_db.phone_number,
+                "session_id": onboarding_db.session_id,
                 "preferences": preferences,
                 "meal_plan": meal_plan_by_day,
                 "database_summary": {
@@ -220,8 +221,9 @@ async def generate_meals(
             print(f"Database error: {db_error}")
             
             return {
-                "ip_address": ip_address,
-                "session_id": session.session_id,
+                #"ip_address": ip_address,
+                "phone_number":user_db.phone_number,
+                "session_id": onboarding_db.session_id,
                 "preferences": preferences,
                 "meal_plan": meal_plan_by_day,
                 "database_summary": {
@@ -235,97 +237,200 @@ async def generate_meals(
         raise
     except Exception as e:
         raise HTTPException(status_code=500,detail=f"Meal generation error: {str(e)}")
-
+    
 @router.get("/generated-meals", dependencies=[Depends(JWTBearer())])
-async def get_saved_meals(
-    request: Request,
+async def get_my_saved_meals(
     db: Session = Depends(get_db),
-    meal_date: str = Query(None, description="Filter by date (YYYY-MM-DD)"),
-    meal_type: str = Query(None, description="Filter by meal type"),
-    limit: int = Query(50, description="Maximum number of meals to return"),
-    offset: int = Query(0, description="Number of meals to skip")
+    current_user: User = Depends(get_current_user),
 ):
-    
     try:
-        ip_address = request.client.host
-    
-        session = db.query(OnboardingSession).filter_by(ip_address=ip_address, is_complete=True).first()
+        onboarding_db = (
+            db.query(OnboardingSession)
+            .filter(
+                OnboardingSession.phone_number == current_user.phone_number,
+                OnboardingSession.is_complete == True
+            )
+            .first()
+        )
+        if not onboarding_db:
+            raise HTTPException(
+                status_code=404,
+                detail="No completed onboarding session found. Complete onboarding first."
+            )
 
-        if not session:
-            raise HTTPException(status_code=404,detail="No completed session found for this IP")
+        user_db = (
+            db.query(User)
+            .filter(User.session_id == onboarding_db.session_id)
+            .first()
+        )
+        if not user_db:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found for this onboarding session."
+            )
 
-        query = (
-            db.query(GeneratedMeals)
-            .join(MealRequest, GeneratedMeals.request_id == MealRequest.user_request_id)
+        meal_requests = (
+            db.query(MealRequest)
+            .filter(MealRequest.user_id == user_db.user_id)
+            .all()
         )
 
-        if meal_date:
-            try:
-                filter_date = datetime.strptime(meal_date, "%Y-%m-%d")
-                query = query.filter(MealRequest.meal_date == filter_date)
-            except ValueError:
-                raise HTTPException(status_code=400,detail="Invalid meal_date format. Use YYYY-MM-DD")
-
-        if meal_type:
-            query = query.filter(MealRequest.meal_type == meal_type.lower())
-
-        total_count = query.count()
-        meals = query.offset(offset).limit(limit).all()
-
-        formatted_meals = []
-        for meal in meals:
-            ingredients = db.query(MealIngredient).filter_by(meal_id=meal.meal_id).all()
-            instructions = (db.query(MealInstructions).filter_by(meal_id=meal.meal_id).order_by(MealInstructions.step_number).all())
-            nutrition = db.query(MealNutritionInfo).filter_by(meal_id=meal.meal_id).all()
-            meal_request = db.query(MealRequest).filter_by(user_request_id=meal.request_id).first()
-
-            image_url=f"{base_url}/{meal.image_url}"
-
-            formatted_meal = {
-                "meal_id": meal.meal_id,
-                "name": meal.meal_name,
-                "description": meal.description,
-                "prep_time_mins": meal.prep_time_mins,
-                "ai_confidence_score": meal.ai_confidence_score,
-                "meal_type": meal_request.meal_type if meal_request else None,
-                "meal_date": meal_request.meal_date.strftime("%Y-%m-%d") if meal_request and meal_request.meal_date else None,
-                "day_name":meal_request.day_name,
-                "image_url":image_url,
-                "ingredients": [
-                    {
-                        "name": ing.ingredient_name,
-                        "quantity": ing.quantity
-                    } for ing in ingredients
-                ],
-                "instructions": [
-                    {
-                        "step": inst.step_number,
-                        "instruction": inst.instruction_text
-                    } for inst in instructions
-                ],
-                "nutrition": [
-                    {
-                        "nutrient": nut.nutrient_name,
-                        "value": nut.value,
-                        "unit": nut.unit
-                    } for nut in nutrition
-                ],
-                "created_at": meal.created_at.isoformat()
+        if not meal_requests:
+            return {
+                "phone_number": current_user.phone_number,
+                "session_id": onboarding_db.session_id,
+                "meals": [],
+                "message": "No meals found for this user."
             }
-            formatted_meals.append(formatted_meal)
+
+        meals_data = []
+        for req in meal_requests:
+            generated_meals = (
+                db.query(GeneratedMeals)
+                .filter(GeneratedMeals.request_id == req.user_request_id)
+                .all()
+            )
+            for meal in generated_meals:
+                ingredients = db.query(MealIngredient).filter_by(meal_id=meal.meal_id).all()
+                instructions = (
+                    db.query(MealInstructions)
+                    .filter_by(meal_id=meal.meal_id)
+                    .order_by(MealInstructions.step_number)
+                    .all()
+                )
+                nutrition = db.query(MealNutritionInfo).filter_by(meal_id=meal.meal_id).all()
+
+                meals_data.append({
+                    "meal_id": meal.meal_id,
+                    "name": meal.meal_name,
+                    "description": meal.description,
+                    "prep_time_mins": meal.prep_time_mins,
+                    "ai_confidence_score": meal.ai_confidence_score,
+                    "meal_type": req.meal_type,
+                    "meal_date": req.meal_date.strftime("%Y-%m-%d") if req.meal_date else None,
+                    "day_name": req.day_name,
+                    "image_url": f"{base_url}/{meal.image_url}" if meal.image_url else None,
+                    "ingredients": [
+                        {"name": ing.ingredient_name, "quantity": ing.quantity}
+                        for ing in ingredients
+                    ],
+                    "instructions": [
+                        {"step": inst.step_number, "instruction": inst.instruction_text}
+                        for inst in instructions
+                    ],
+                    "nutrition": [
+                        {"nutrient": nut.nutrient_name, "value": nut.value, "unit": nut.unit}
+                        for nut in nutrition
+                    ],
+                    "created_at": meal.created_at.isoformat()
+                })
 
         return {
-            "ip_address": ip_address,
-            "session_id": session.session_id,
-            "pagination": get_pagination(total_count, limit, offset),
-            "filters_applied": {
-                "meal_date": meal_date,
-                "meal_type": meal_type
-            },
-            "meals": formatted_meals
+            "phone_number": current_user.phone_number,
+            "session_id": onboarding_db.session_id,
+            "meals": meals_data,
+            "total_meals": len(meals_data),
         }
 
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500,detail=f"Error retrieving saved meals: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving meals for current user: {str(e)}"
+        )
+
+
+# @router.get("/all-generated-meals", dependencies=[Depends(JWTBearer())])
+# async def get_saved_meals(
+#     request: Request,
+#     db: Session = Depends(get_db),
+#     meal_date: str = Query(None, description="Filter by date (YYYY-MM-DD)"),
+#     meal_type: str = Query(None, description="Filter by meal type"),
+#     limit: int = Query(50, description="Maximum number of meals to return"),
+#     offset: int = Query(0, description="Number of meals to skip")
+# ):
+    
+#     try:
+#         ip_address = request.client.host
+    
+#         session = db.query(OnboardingSession).filter_by(ip_address=ip_address, is_complete=True).first()
+
+#         if not session:
+#             raise HTTPException(status_code=404,detail="No completed session found for this IP")
+
+#         query = (
+#             db.query(GeneratedMeals)
+#             .join(MealRequest, GeneratedMeals.request_id == MealRequest.user_request_id)
+#         )
+
+#         if meal_date:
+#             try:
+#                 filter_date = datetime.strptime(meal_date, "%Y-%m-%d")
+#                 query = query.filter(MealRequest.meal_date == filter_date)
+#             except ValueError:
+#                 raise HTTPException(status_code=400,detail="Invalid meal_date format. Use YYYY-MM-DD")
+
+#         if meal_type:
+#             query = query.filter(MealRequest.meal_type == meal_type.lower())
+
+#         total_count = query.count()
+#         meals = query.offset(offset).limit(limit).all()
+
+#         formatted_meals = []
+#         for meal in meals:
+#             ingredients = db.query(MealIngredient).filter_by(meal_id=meal.meal_id).all()
+#             instructions = (db.query(MealInstructions).filter_by(meal_id=meal.meal_id).order_by(MealInstructions.step_number).all())
+#             nutrition = db.query(MealNutritionInfo).filter_by(meal_id=meal.meal_id).all()
+#             meal_request = db.query(MealRequest).filter_by(user_request_id=meal.request_id).first()
+
+#             image_url=f"{base_url}/{meal.image_url}"
+
+#             formatted_meal = {
+#                 "meal_id": meal.meal_id,
+#                 "name": meal.meal_name,
+#                 "description": meal.description,
+#                 "prep_time_mins": meal.prep_time_mins,
+#                 "ai_confidence_score": meal.ai_confidence_score,
+#                 "meal_type": meal_request.meal_type if meal_request else None,
+#                 "meal_date": meal_request.meal_date.strftime("%Y-%m-%d") if meal_request and meal_request.meal_date else None,
+#                 "day_name":meal_request.day_name,
+#                 "image_url":image_url,
+#                 "ingredients": [
+#                     {
+#                         "name": ing.ingredient_name,
+#                         "quantity": ing.quantity
+#                     } for ing in ingredients
+#                 ],
+#                 "instructions": [
+#                     {
+#                         "step": inst.step_number,
+#                         "instruction": inst.instruction_text
+#                     } for inst in instructions
+#                 ],
+#                 "nutrition": [
+#                     {
+#                         "nutrient": nut.nutrient_name,
+#                         "value": nut.value,
+#                         "unit": nut.unit
+#                     } for nut in nutrition
+#                 ],
+#                 "created_at": meal.created_at.isoformat()
+#             }
+#             formatted_meals.append(formatted_meal)
+
+#         return {
+#             "ip_address": ip_address,
+#             "session_id": session.session_id,
+#             "pagination": get_pagination(total_count, limit, offset),
+#             "filters_applied": {
+#                 "meal_date": meal_date,
+#                 "meal_type": meal_type
+#             },
+#             "meals": formatted_meals
+#         }
+
+#     except HTTPException as e:
+#         raise e
+#     except Exception as e:
+#         raise HTTPException(status_code=500,detail=f"Error retrieving saved meals: {str(e)}")

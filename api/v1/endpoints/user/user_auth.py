@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 from sqlalchemy.exc import SQLAlchemyError
+from api.v1.models.onboarding.onboarding_sessions import OnboardingSession
 from api.v1.models.user.user_auth import OTP, User
 from api.v1.schemas.user import StatusEnum, UserType, UserUpdateRequest
 from auth.auth_handler import signJWT
@@ -40,10 +41,16 @@ def register(phone_number: str ,request: Request, response: Response, db: Sessio
         session_id = get_or_create_session(request, response, ip_address, db)
 
         if not session_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Please complete onboarding first before registration.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="complete onboarding first before registration.")
+        
+        onboarding_db=db.query(OnboardingSession).filter(OnboardingSession.ip_address==ip_address).first()
+        if onboarding_db:
+            onboarding_db.phone_number=phone_number
+            db.commit()
 
         new_user = User(
             session_id=session_id,
+            ip_address=ip_address,
             username=None,
             email=None,
             phone_number=phone_number, 

@@ -12,6 +12,7 @@ class User(Base):
     
     user_id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(String(255), ForeignKey("onboarding_sessions.session_id"))
+    ip_address = Column(String(45), nullable=False)
     username = Column(String(255), nullable=True)
     email = Column(String(25), unique=True, nullable=True)
     phone_number = Column(String(15), unique=True)

@@ -9,6 +9,7 @@ class OnboardingSession(Base):
     session_id = Column(String(255), primary_key=True)
     is_complete = Column(Boolean, default=False)
     ip_address = Column(String(45), nullable=False)
+    phone_number = Column(String(15), unique=True, nullable=True)
     expires_at = Column(DateTime(timezone=True))
     created_by = Column(Integer, nullable=True)
     updated_by = Column(Integer, nullable=True)
