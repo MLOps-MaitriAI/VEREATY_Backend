@@ -12,10 +12,12 @@ class PantryGeneratedMeals(Base):
     meal_name = Column(String(255))
     description = Column(Text)
     prep_time_mins = Column(Integer)
-    calories = Column(Integer)
     image_url = Column(String(255))
     ai_confidence_score = Column(Float)
     created_by = Column(Integer, nullable=True)
     updated_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    pantry_generated_meals = relationship("PantryRequest", back_populates="pantry_requests")
+    

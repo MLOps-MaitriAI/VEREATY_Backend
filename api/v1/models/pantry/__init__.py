@@ -1,5 +1,6 @@
 from .pantries import Pantry
 from .pantry_generated_meals import PantryGeneratedMeals
-from .pantry_meal_nutrition_info import PantryMealInstructions
+from .pantry_meal_nutrition_info import PantryMealnutritions
 from .pantry_requests import PantryRequest
 from .pantry_ingredients import PantryIngredient
+from .pantry_meal_instructions import PantryMealInstructions

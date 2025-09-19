@@ -21,3 +21,5 @@ class PantryRequest(Base):
     # Relationships
     user = relationship("User", back_populates="pantry_requests")
     pantry = relationship("Pantry", back_populates="pantry_requests")
+    pantry_requests = relationship("PantryGeneratedMeals", back_populates="pantry_generated_meals")
+   

@@ -16,6 +16,7 @@ from utils.onboarding_function import PreferenceExtractor
 from utils.meals_generate_function import extract_time_minutes, get_dish_recommendations
 import os
 
+
 router = APIRouter()
 
 now = datetime.now(timezone.utc)
@@ -340,6 +341,72 @@ async def get_my_saved_meals(
             detail=f"Error retrieving meals for current user: {str(e)}"
         )
 
+@router.delete("/delete-meal/{meal_id}", dependencies=[Depends(JWTBearer())])
+async def delete_meal(
+    meal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        # Find the user's completed onboarding session
+        onboarding_db = (
+            db.query(OnboardingSession)
+            .filter(
+                OnboardingSession.phone_number == current_user.phone_number,
+                OnboardingSession.is_complete == True
+            )
+            .first()
+        )
+        if not onboarding_db:
+            raise HTTPException(
+                status_code=404,
+                detail="No completed onboarding session found. Complete onboarding first."
+            )
+
+        # Find user
+        user_db = (
+            db.query(User)
+            .filter(User.session_id == onboarding_db.session_id)
+            .first()
+        )
+        if not user_db:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found for this onboarding session."
+            )
+
+        # Check meal ownership
+        meal = (
+            db.query(GeneratedMeals)
+            .join(MealRequest, GeneratedMeals.request_id == MealRequest.user_request_id)
+            .filter(
+                GeneratedMeals.meal_id == meal_id,
+                MealRequest.user_id == user_db.user_id
+            )
+            .first()
+        )
+        if not meal:
+            raise HTTPException(status_code=404, detail="Meal not found or not owned by the user")
+
+        # Delete related entries first
+        db.query(MealIngredient).filter(MealIngredient.meal_id == meal.meal_id).delete()
+        db.query(MealInstructions).filter(MealInstructions.meal_id == meal.meal_id).delete()
+        db.query(MealNutritionInfo).filter(MealNutritionInfo.meal_id == meal.meal_id).delete()
+
+        # Delete the meal itself
+        db.delete(meal)
+        db.commit()
+
+        return {
+            "message": f"Meal with ID {meal_id} deleted successfully.",
+            "meal_id": meal_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting meal: {str(e)}")
 
 # @router.get("/all-generated-meals", dependencies=[Depends(JWTBearer())])
 # async def get_saved_meals(

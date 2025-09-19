@@ -24,7 +24,15 @@ def send_otp_sms(phone_number: str, otp: str):
         message = client.messages.create(
             to=phone_number,
             from_=TWILIO_PHONE_NUMBER,
-            body=f"Your vereaty login OTP is {otp}. It is valid for 5 mins. Do not share this code with anyone."
+            #body=f"Your vereaty login OTP is {otp}. It is valid for 5 mins. Do not share this code with anyone."
+            body=(
+                "*Vereaty Login Verification*\n\n"
+                f"Your OTP: {otp}\n\n"
+                "This code is valid for 5 minutes.\n"
+                "Do not share it with anyone.\n\n"
+                "Thank you,\n"
+                "Vereaty Team"
+            )
         )
         return True
     except Exception as e:

@@ -4,11 +4,11 @@ from sqlalchemy import TIMESTAMP, Column, DateTime, Integer, ForeignKey, String,
 from sqlalchemy.orm import relationship
 from db.session import Base
 
-class PantryMealInstructions(Base):
+class PantryMealnutritions(Base):
     __tablename__ = "pantry_meal_nutrition_info"
     
     pantry_instruction_id = Column(Integer, primary_key=True, autoincrement=True)
-    pantry_meal_id = Column(Integer, ForeignKey("pantry_generated_meals.pantry_meal_id"))
+    pantry_id = Column(Integer, ForeignKey("pantries.pantry_id"))
     nutrient_name = Column(String(255))
     unit = Column(String(255))
     value = Column(Float)
@@ -16,3 +16,7 @@ class PantryMealInstructions(Base):
     updated_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    pantry = relationship("Pantry", back_populates="pantry_meal_nutrition_info")
+   
+    
